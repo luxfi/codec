@@ -36,12 +36,20 @@ type Manager interface {
 	Size(version uint16, value interface{}) (int, error)
 }
 
+// DefaultMaxSize is the default maximum size for codec manager (1MB)
+const DefaultMaxSize = 1024 * 1024
+
 // NewManager returns a new codec manager
 func NewManager(maxSize uint64) Manager {
 	return &manager{
 		maxSize: int(maxSize),
 		codecs:  make(map[uint16]Codec),
 	}
+}
+
+// NewDefaultManager returns a codec manager with default max size
+func NewDefaultManager() Manager {
+	return NewManager(DefaultMaxSize)
 }
 
 type manager struct {
