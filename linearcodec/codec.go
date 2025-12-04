@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	// DefaultMaxSliceLen is the default max slice length
-	DefaultMaxSliceLen = 256 * 1024
+	// DefaultMaxSliceLen is the default max slice length (2 MiB to allow large blocks)
+	DefaultMaxSliceLen = 2 * 1024 * 1024
 )
 
 var (
@@ -26,22 +26,31 @@ var (
 type Codec struct {
 	lock        sync.RWMutex
 	maxSliceLen int
+	nextTypeID  uint32
 	typeIDToIdx map[reflect.Type]uint32
-	idxToType   []reflect.Type
+	idxToType   map[uint32]reflect.Type
 }
 
 // New returns a new linear codec with the default max slice length
 func New(maxSliceLen int) *Codec {
 	return &Codec{
 		maxSliceLen: maxSliceLen,
+		nextTypeID:  0,
 		typeIDToIdx: make(map[reflect.Type]uint32),
-		idxToType:   make([]reflect.Type, 0),
+		idxToType:   make(map[uint32]reflect.Type),
 	}
 }
 
 // NewDefault returns a new linear codec with the default max slice length
 func NewDefault() *Codec {
 	return New(DefaultMaxSliceLen)
+}
+
+// SkipRegistrations skips the next n type IDs (for backwards compatibility)
+func (c *Codec) SkipRegistrations(num int) {
+	c.lock.Lock()
+	c.nextTypeID += uint32(num)
+	c.lock.Unlock()
 }
 
 // RegisterType registers a type for serialization
@@ -54,8 +63,10 @@ func (c *Codec) RegisterType(val interface{}) error {
 		return fmt.Errorf("%w: %v already registered", ErrCantRegisterType, t)
 	}
 
-	c.typeIDToIdx[t] = uint32(len(c.idxToType))
-	c.idxToType = append(c.idxToType, t)
+	typeID := c.nextTypeID
+	c.typeIDToIdx[t] = typeID
+	c.idxToType[typeID] = t
+	c.nextTypeID++
 	return nil
 }
 
@@ -212,11 +223,11 @@ func (c *Codec) unmarshal(p *codec.Packer, rv reflect.Value) error {
 	case reflect.Interface:
 		c.lock.RLock()
 		idx := p.UnpackInt()
-		if int(idx) >= len(c.idxToType) {
+		t, ok := c.idxToType[idx]
+		if !ok {
 			c.lock.RUnlock()
 			return fmt.Errorf("%w: index %d", ErrTypeNotFound, idx)
 		}
-		t := c.idxToType[idx]
 		c.lock.RUnlock()
 		elem := reflect.New(t).Elem()
 		if err := c.unmarshal(p, elem); err != nil {

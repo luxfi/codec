@@ -37,9 +37,9 @@ type Manager interface {
 }
 
 // NewManager returns a new codec manager
-func NewManager(maxSize int) Manager {
+func NewManager(maxSize uint64) Manager {
 	return &manager{
-		maxSize: maxSize,
+		maxSize: int(maxSize),
 		codecs:  make(map[uint16]Codec),
 	}
 }
