@@ -4,9 +4,11 @@
 package linearcodec
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 
 	"github.com/luxfi/codec"
@@ -136,7 +138,17 @@ func (c *Codec) marshal(rv reflect.Value, p *codec.Packer) error {
 			}
 		}
 	case reflect.Struct:
+		t := rv.Type()
 		for i := 0; i < rv.NumField(); i++ {
+			field := t.Field(i)
+			// Skip unexported fields
+			if !field.IsExported() {
+				continue
+			}
+			// Check for serialize tag
+			if tag := field.Tag.Get("serialize"); tag == "-" {
+				continue
+			}
 			if err := c.marshal(rv.Field(i), p); err != nil {
 				return err
 			}
@@ -146,6 +158,26 @@ func (c *Codec) marshal(rv reflect.Value, p *codec.Packer) error {
 			return codec.ErrMarshalZeroLength
 		}
 		return c.marshal(rv.Elem(), p)
+	case reflect.Map:
+		if rv.IsNil() {
+			p.PackInt(0)
+			return p.Err
+		}
+		if rv.Len() > c.maxSliceLen {
+			return codec.ErrMaxSliceLenExceeded
+		}
+		p.PackInt(uint32(rv.Len()))
+		// Sort keys for deterministic output
+		keys := rv.MapKeys()
+		sortMapKeys(keys)
+		for _, key := range keys {
+			if err := c.marshal(key, p); err != nil {
+				return err
+			}
+			if err := c.marshal(rv.MapIndex(key), p); err != nil {
+				return err
+			}
+		}
 	case reflect.Interface:
 		if rv.IsNil() {
 			return codec.ErrMarshalZeroLength
@@ -209,7 +241,17 @@ func (c *Codec) unmarshal(p *codec.Packer, rv reflect.Value) error {
 			}
 		}
 	case reflect.Struct:
+		t := rv.Type()
 		for i := 0; i < rv.NumField(); i++ {
+			field := t.Field(i)
+			// Skip unexported fields
+			if !field.IsExported() {
+				continue
+			}
+			// Check for serialize tag
+			if tag := field.Tag.Get("serialize"); tag == "-" {
+				continue
+			}
 			if err := c.unmarshal(p, rv.Field(i)); err != nil {
 				return err
 			}
@@ -220,6 +262,24 @@ func (c *Codec) unmarshal(p *codec.Packer, rv reflect.Value) error {
 			return err
 		}
 		rv.Set(elem)
+	case reflect.Map:
+		length := int(p.UnpackInt())
+		if length > c.maxSliceLen {
+			return codec.ErrMaxSliceLenExceeded
+		}
+		m := reflect.MakeMapWithSize(rv.Type(), length)
+		for i := 0; i < length; i++ {
+			key := reflect.New(rv.Type().Key()).Elem()
+			if err := c.unmarshal(p, key); err != nil {
+				return err
+			}
+			val := reflect.New(rv.Type().Elem()).Elem()
+			if err := c.unmarshal(p, val); err != nil {
+				return err
+			}
+			m.SetMapIndex(key, val)
+		}
+		rv.Set(m)
 	case reflect.Interface:
 		c.lock.RLock()
 		idx := p.UnpackInt()
@@ -276,8 +336,18 @@ func (c *Codec) size(rv reflect.Value) (int, error) {
 		}
 		return size, nil
 	case reflect.Struct:
+		t := rv.Type()
 		size := 0
 		for i := 0; i < rv.NumField(); i++ {
+			field := t.Field(i)
+			// Skip unexported fields
+			if !field.IsExported() {
+				continue
+			}
+			// Check for serialize tag
+			if tag := field.Tag.Get("serialize"); tag == "-" {
+				continue
+			}
 			s, err := c.size(rv.Field(i))
 			if err != nil {
 				return 0, err
@@ -290,6 +360,24 @@ func (c *Codec) size(rv reflect.Value) (int, error) {
 			return 0, codec.ErrMarshalZeroLength
 		}
 		return c.size(rv.Elem())
+	case reflect.Map:
+		if rv.IsNil() {
+			return 4, nil
+		}
+		size := 4
+		iter := rv.MapRange()
+		for iter.Next() {
+			keySize, err := c.size(iter.Key())
+			if err != nil {
+				return 0, err
+			}
+			valSize, err := c.size(iter.Value())
+			if err != nil {
+				return 0, err
+			}
+			size += keySize + valSize
+		}
+		return size, nil
 	case reflect.Interface:
 		if rv.IsNil() {
 			return 0, codec.ErrMarshalZeroLength
@@ -301,5 +389,100 @@ func (c *Codec) size(rv reflect.Value) (int, error) {
 		return 4 + s, nil
 	default:
 		return 0, fmt.Errorf("%w: %v", codec.ErrUnsupportedType, rv.Kind())
+	}
+}
+
+// sortMapKeys sorts map keys for deterministic serialization.
+// Keys are sorted by their byte representation when possible.
+func sortMapKeys(keys []reflect.Value) {
+	if len(keys) == 0 {
+		return
+	}
+
+	sort.Slice(keys, func(i, j int) bool {
+		return compareValues(keys[i], keys[j]) < 0
+	})
+}
+
+// compareValues compares two reflect.Values for sorting.
+// Returns negative if a < b, zero if a == b, positive if a > b.
+func compareValues(a, b reflect.Value) int {
+	// Handle different kinds
+	switch a.Kind() {
+	case reflect.Array:
+		// Compare element by element
+		for i := 0; i < a.Len(); i++ {
+			if cmp := compareValues(a.Index(i), b.Index(i)); cmp != 0 {
+				return cmp
+			}
+		}
+		return 0
+	case reflect.Slice:
+		// Compare by length first, then element by element
+		minLen := a.Len()
+		if b.Len() < minLen {
+			minLen = b.Len()
+		}
+		for i := 0; i < minLen; i++ {
+			if cmp := compareValues(a.Index(i), b.Index(i)); cmp != 0 {
+				return cmp
+			}
+		}
+		return a.Len() - b.Len()
+	case reflect.String:
+		as, bs := a.String(), b.String()
+		if as < bs {
+			return -1
+		} else if as > bs {
+			return 1
+		}
+		return 0
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		ai, bi := a.Int(), b.Int()
+		if ai < bi {
+			return -1
+		} else if ai > bi {
+			return 1
+		}
+		return 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		au, bu := a.Uint(), b.Uint()
+		if au < bu {
+			return -1
+		} else if au > bu {
+			return 1
+		}
+		return 0
+	case reflect.Bool:
+		ab, bb := a.Bool(), b.Bool()
+		if !ab && bb {
+			return -1
+		} else if ab && !bb {
+			return 1
+		}
+		return 0
+	default:
+		// For complex types, compare string representation as fallback
+		// This handles Hash and Address types which are [N]byte arrays
+		if a.CanInterface() && b.CanInterface() {
+			// Try to compare as bytes if it's a byte array
+			if a.Kind() == reflect.Array && a.Type().Elem().Kind() == reflect.Uint8 {
+				aBytes := make([]byte, a.Len())
+				bBytes := make([]byte, b.Len())
+				for i := 0; i < a.Len(); i++ {
+					aBytes[i] = byte(a.Index(i).Uint())
+					bBytes[i] = byte(b.Index(i).Uint())
+				}
+				return bytes.Compare(aBytes, bBytes)
+			}
+			as := fmt.Sprint(a.Interface())
+			bs := fmt.Sprint(b.Interface())
+			if as < bs {
+				return -1
+			} else if as > bs {
+				return 1
+			}
+		}
+		return 0
 	}
 }
