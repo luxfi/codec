@@ -1,6 +1,6 @@
 module github.com/luxfi/codec
 
-go 1.24.5
+go 1.25.5
 
 require github.com/luxfi/ids v1.1.2
 
