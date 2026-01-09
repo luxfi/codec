@@ -9,6 +9,8 @@ const (
 	ByteLen = 1
 	// ShortLen is the number of bytes per short
 	ShortLen = 2
+	// VersionSize is the number of bytes used for codec version
+	VersionSize = ShortLen
 	// IntLen is the number of bytes per int
 	IntLen = 4
 	// LongLen is the number of bytes per long

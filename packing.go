@@ -31,6 +31,13 @@ type Packer struct {
 
 // NewPacker returns a new Packer with the given max size
 func NewPacker(maxSize int) *Packer {
+	if maxSize < 0 {
+		maxSize = 0
+	}
+	// Avoid huge upfront allocations; capacity will grow as needed.
+	if maxSize > DefaultMaxSize {
+		maxSize = DefaultMaxSize
+	}
 	return &Packer{
 		Bytes:  make([]byte, 0, maxSize),
 		Offset: 0,
