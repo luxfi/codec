@@ -5,6 +5,8 @@ package codec
 
 import (
 	"errors"
+
+	"github.com/luxfi/codec/wrappers"
 )
 
 // Common codec errors
@@ -21,13 +23,25 @@ var (
 	ErrCantUnpackVersion         = errors.New("couldn't unpack codec version")
 	ErrUnknownVersion            = errors.New("unknown codec version")
 	ErrDuplicateType             = errors.New("duplicate type registration")
+	ErrExtraSpace                = errors.New("trailing buffer space")
 )
 
 // Codec marshals and unmarshals
 type Codec interface {
-	MarshalInto(interface{}, *Packer) error
-	UnmarshalFrom(*Packer, interface{}) error
+	MarshalInto(interface{}, *wrappers.Packer) error
+	UnmarshalFrom(*wrappers.Packer, interface{}) error
 	Size(value interface{}) (int, error)
+}
+
+// Registry handles type registration for codec
+type Registry interface {
+	RegisterType(interface{}) error
+}
+
+// GeneralCodec combines Codec and Registry interfaces
+type GeneralCodec interface {
+	Codec
+	Registry
 }
 
 // Manager manages multiple codec versions
@@ -73,7 +87,7 @@ func (m *manager) Marshal(version uint16, source interface{}) ([]byte, error) {
 		return nil, ErrUnknownVersion
 	}
 
-	p := NewPacker(m.maxSize)
+	p := &wrappers.Packer{MaxSize: m.maxSize}
 	p.PackShort(version)
 	if p.Err != nil {
 		return nil, ErrCantPackVersion
@@ -91,7 +105,12 @@ func (m *manager) Unmarshal(bytes []byte, dest interface{}) (uint16, error) {
 		return 0, ErrCantUnpackVersion
 	}
 
-	p := PackerFromBytes(bytes)
+	// Enforce maxSize during unmarshalling - reject oversized inputs
+	if len(bytes) > m.maxSize {
+		return 0, ErrMaxSliceLenExceeded
+	}
+
+	p := &wrappers.Packer{Bytes: bytes, MaxSize: m.maxSize}
 	version := p.UnpackShort()
 	if p.Err != nil {
 		return 0, ErrCantUnpackVersion
@@ -102,7 +121,16 @@ func (m *manager) Unmarshal(bytes []byte, dest interface{}) (uint16, error) {
 		return version, ErrUnknownVersion
 	}
 
-	return version, codec.UnmarshalFrom(p, dest)
+	if err := codec.UnmarshalFrom(p, dest); err != nil {
+		return version, err
+	}
+
+	// Check for trailing bytes
+	if p.Offset != len(bytes) {
+		return version, ErrExtraSpace
+	}
+
+	return version, nil
 }
 
 func (m *manager) Size(version uint16, value interface{}) (int, error) {
