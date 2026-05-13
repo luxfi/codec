@@ -1,12 +1,12 @@
 module github.com/luxfi/codec
 
-go 1.26.1
+go 1.26.3
 
 require (
 	github.com/gorilla/rpc v1.2.1
 	github.com/luxfi/container v0.0.4
 	github.com/luxfi/ids v1.2.9
-	github.com/luxfi/math v1.2.3
+	github.com/luxfi/math v1.4.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
 )
