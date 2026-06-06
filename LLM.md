@@ -1,6 +1,21 @@
-# codec — STRUCTURAL FLOOR (Wave 2G-Archive)
+# codec — ARCHIVED (Wave 2G-Cascade complete)
 
-## Status
+## Status — ARCHIVED 2026-06-06
+
+`github.com/luxfi/codec` is **archived** on GitHub. The repository is
+read-only; tagged versions (v1.0.0..v1.1.5) remain resolvable via the
+Go module proxy. The Wave 2G-Cascade landed the upstream re-tags
+(p2p v1.21.1, node v1.29.3, sdk v1.17.6, vm v1.1.11, geth v1.16.99,
+evm v0.19.4, precompile v0.5.37, coreth v1.23.3) that unblock every
+downstream `go mod tidy` after codec/jsonrpc was dropped in v1.1.5.
+
+Successor locations:
+- `codec/zapcodec` → **`github.com/luxfi/zapcodec`** (v1.0.0+)
+- `codec/jsonrpc` → **`github.com/luxfi/utils/json`** (utils v1.1.5+)
+- `codec/wrappers` (canonical) → **`github.com/luxfi/utils/wrappers`** (utils v1.1.5+)
+- `codec.Manager` (polymorphic) → **archived; consumers migrated to ZAP kind-byte dispatch via `proto/zap_codec`, `vms/pcodecs`, etc.**
+
+## Pre-archive context
 
 `github.com/luxfi/codec` is the legacy polymorphic Marshal/Unmarshal codec
 used by classical Lux wire formats: `codec.Manager` dispatches across
@@ -37,24 +52,31 @@ All other former importers migrated:
 | ~~`codec/hierarchycodec`~~ | DELETED in Wave 2F — zero external importers |
 | ~~`codec/jsonrpc`~~ | DELETED in Wave 2F — canonical home is `luxfi/utils/json` (v1.1.5) |
 
-## Module lifecycle — Pending GitHub archive
+## Module lifecycle — ARCHIVED 2026-06-06
 
-The module is **structurally frozen** at v1.1.5. The only remaining task
-is `gh repo archive luxfi/codec`. That archive is **blocked** until the
-upstream tagging cascade lands:
+The Wave 2G-Cascade is complete:
 
-| Repo | Pinned p2p / sdk version | Action needed |
+| Repo | Cascade tag | Cascade action |
 |---|---|---|
-| `luxfi/p2p` v1.19.2 | (head)→v1.21.1+ has codec rip | Need consumers to bump pin past v1.21.0 |
-| `luxfi/node` v1.23.36 | pins p2p v1.19.2 | re-tag pinning p2p v1.21.1+ |
-| `luxfi/sdk` v1.16.48 | pins p2p v1.19.2 | re-tag pinning p2p v1.21.1+ |
+| `luxfi/p2p` v1.21.1 | already on remote | drops `codec/jsonrpc` import in `peer/peer.go` |
+| `luxfi/vm` v1.1.11 | shipped 2026-06-06 | tidy floor refresh; codec demoted to indirect |
+| `luxfi/sdk` v1.17.6 | shipped 2026-06-06 | bumps p2p v1.21.1, vm v1.1.11; codec demoted to indirect |
+| `luxfi/node` v1.29.3 | shipped 2026-06-06 | bumps p2p v1.21.1, sdk v1.17.6, vm v1.1.11; codec demoted to indirect |
+| `luxfi/geth` v1.16.99 | shipped 2026-06-06 | bumps p2p v1.21.1, vm v1.1.11, precompile v0.5.37 |
+| `luxfi/precompile` v0.5.37 | shipped 2026-06-06 | bumps p2p v1.21.1, vm v1.1.11 |
+| `luxfi/evm` v0.19.4 | shipped 2026-06-06 | bumps p2p v1.21.1, vm v1.1.11, geth v1.16.99 |
+| `luxfi/coreth` v1.23.3 | shipped 2026-06-06 | bumps p2p, node, sdk, vm, geth, precompile |
+| Downstream modules (utxo, warp, precompile/e2e, zwing, crypto, evmgpu, chains, evm, runtime, kms, keys, container, oracle, relay, lpm, consensus/examples, genesis, genesis/cmd, genesis/builder) | shipped 2026-06-06 | each bumped pins and tidied; transitive codec/jsonrpc dependency removed |
 
-Once those re-tag, every transitive importer of `luxfi/codec` will drop
-the `// indirect` line on `go mod tidy`, and the module can be archived
-with no surprises for downstream consumers. The v1.1.5 tag stays
-resolvable via the Go module proxy even after `gh repo archive` — codec
-imports in tagged dependencies continue to work; only new pushes to the
-repo are blocked.
+Skipped (pre-existing breakage unrelated to cascade — listed for future work):
+- `luxfi/proto` — uses removed `node/proto/pb/warp` (pre-existing rip target)
+- `luxfi/cli` — `luxfi/evm` v0.8.49 needs `EtnaTime` field, `luxfi/sdk/api` v0.0.2 needs `avajson.Uint64`, plus signature drift in `coreth/atomic/export_tx.go`
+- `luxfi/state` and `luxfi/benchmarks` — both reference removed `luxfi/geth/crypto` package
+- `luxfi/netrunner` — k8s.io transitive v0.36.1 dropped `autoscaling/v2beta1`, `scheduling/v1alpha1` (pre-existing k8s upgrade lag)
+
+Tagged versions (v1.0.0..v1.1.5) remain resolvable via the Go module
+proxy. Codec imports in tagged dependencies continue to work; only new
+pushes to the repo are blocked.
 
 ## Why this floor exists
 
