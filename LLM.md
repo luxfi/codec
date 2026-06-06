@@ -39,11 +39,11 @@ All other former importers have been migrated:
 | `codec` (top-level) | `Manager`, `Codec`, `Registry`, `GeneralCodec` — used by structural floor above |
 | `codec/linearcodec` | the only codec impl callers still ask for via `NewDefault` |
 | `codec/reflectcodec` | `linearcodec`'s backing type-walker; not used directly externally |
-| `codec/hierarchycodec` | legacy variant; no external importers — DEAD |
 | `codec/zapcodec` | head-to-head adapter used by `bench/modes/zap_vs_codec`; no production import |
 | `codec/codecmock` | mock generator — used by tests that mock `codec.Manager` |
-| `codec/wrappers` | DEAD — replaced by `luxfi/utils/wrappers` |
-| `codec/jsonrpc` | DEAD — replaced by `luxfi/utils/json` |
+| `codec/wrappers` | retained for `codec`'s own internal use + 2 structural re-exporters (proto/internal/pcodectest, node/vms/pcodecs); external canonical home is `luxfi/utils/wrappers` |
+| ~~`codec/hierarchycodec`~~ | DELETED in Wave 2F — zero external importers |
+| ~~`codec/jsonrpc`~~ | DELETED in Wave 2F — canonical home moved to `luxfi/utils/json` (v1.1.5) |
 
 ## Removal Plan (post-Wave 2F)
 
