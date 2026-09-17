@@ -28,14 +28,14 @@ var (
 
 // Codec marshals and unmarshals
 type Codec interface {
-	MarshalInto(interface{}, *wrappers.Packer) error
-	UnmarshalFrom(*wrappers.Packer, interface{}) error
-	Size(value interface{}) (int, error)
+	MarshalInto(any, *wrappers.Packer) error
+	UnmarshalFrom(*wrappers.Packer, any) error
+	Size(value any) (int, error)
 }
 
 // Registry handles type registration for codec
 type Registry interface {
-	RegisterType(interface{}) error
+	RegisterType(any) error
 }
 
 // GeneralCodec combines Codec and Registry interfaces
@@ -47,9 +47,9 @@ type GeneralCodec interface {
 // Manager manages multiple codec versions
 type Manager interface {
 	RegisterCodec(version uint16, codec Codec) error
-	Marshal(version uint16, source interface{}) ([]byte, error)
-	Unmarshal(bytes []byte, dest interface{}) (uint16, error)
-	Size(version uint16, value interface{}) (int, error)
+	Marshal(version uint16, source any) ([]byte, error)
+	Unmarshal(bytes []byte, dest any) (uint16, error)
+	Size(version uint16, value any) (int, error)
 }
 
 // DefaultMaxSize is the default maximum size for codec manager (1MB)
@@ -81,7 +81,7 @@ func (m *manager) RegisterCodec(version uint16, codec Codec) error {
 	return nil
 }
 
-func (m *manager) Marshal(version uint16, source interface{}) ([]byte, error) {
+func (m *manager) Marshal(version uint16, source any) ([]byte, error) {
 	codec, exists := m.codecs[version]
 	if !exists {
 		return nil, ErrUnknownVersion
@@ -100,7 +100,7 @@ func (m *manager) Marshal(version uint16, source interface{}) ([]byte, error) {
 	return p.Bytes[:p.Offset], p.Err
 }
 
-func (m *manager) Unmarshal(bytes []byte, dest interface{}) (uint16, error) {
+func (m *manager) Unmarshal(bytes []byte, dest any) (uint16, error) {
 	if len(bytes) < 2 {
 		return 0, ErrCantUnpackVersion
 	}
@@ -133,7 +133,7 @@ func (m *manager) Unmarshal(bytes []byte, dest interface{}) (uint16, error) {
 	return version, nil
 }
 
-func (m *manager) Size(version uint16, value interface{}) (int, error) {
+func (m *manager) Size(version uint16, value any) (int, error) {
 	codec, exists := m.codecs[version]
 	if !exists {
 		return 0, ErrUnknownVersion

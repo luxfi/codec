@@ -80,7 +80,7 @@ func New(typer TypeCodec, tagNames []string) codec.Codec {
 	}
 }
 
-func (c *genericCodec) Size(value interface{}) (int, error) {
+func (c *genericCodec) Size(value any) (int, error) {
 	if value == nil {
 		return 0, codec.ErrMarshalNil
 	}
@@ -117,7 +117,7 @@ func (c *genericCodec) size(
 		return wrappers.BoolLen, true, nil
 	case reflect.String:
 		return wrappers.StringLen(value.String()), false, nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if value.IsNil() {
 			return 0, false, codec.ErrMarshalNil
 		}
@@ -291,7 +291,7 @@ func (c *genericCodec) size(
 }
 
 // To marshal an interface, [value] must be a pointer to the interface
-func (c *genericCodec) MarshalInto(value interface{}, p *wrappers.Packer) error {
+func (c *genericCodec) MarshalInto(value any, p *wrappers.Packer) error {
 	if value == nil {
 		return codec.ErrMarshalNil
 	}
@@ -339,7 +339,7 @@ func (c *genericCodec) marshal(
 	case reflect.Bool:
 		p.PackBool(value.Bool())
 		return p.Err
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if value.IsNil() {
 			return codec.ErrMarshalNil
 		}
@@ -389,7 +389,7 @@ func (c *genericCodec) marshal(
 			p.PackFixedBytes(value.Bytes())
 			return p.Err
 		}
-		for i := 0; i < numElts; i++ { // Process each element in the slice
+		for i := range numElts { // Process each element in the slice
 			startOffset := p.Offset
 			if err := c.marshal(value.Index(i), p, typeStack); err != nil {
 				return err
@@ -405,7 +405,7 @@ func (c *genericCodec) marshal(
 			return p.Err
 		}
 		numElts := value.Len()
-		for i := 0; i < numElts; i++ { // Process each element in the array
+		for i := range numElts { // Process each element in the array
 			if err := c.marshal(value.Index(i), p, typeStack); err != nil {
 				return err
 			}
@@ -499,13 +499,13 @@ func (c *genericCodec) marshal(
 
 // UnmarshalFrom unmarshals [p.Bytes] into [dest], where [dest] must be a pointer or
 // interface
-func (c *genericCodec) UnmarshalFrom(p *wrappers.Packer, dest interface{}) error {
+func (c *genericCodec) UnmarshalFrom(p *wrappers.Packer, dest any) error {
 	if dest == nil {
 		return codec.ErrUnmarshalNil
 	}
 
 	destPtr := reflect.ValueOf(dest)
-	if destPtr.Kind() != reflect.Ptr {
+	if destPtr.Kind() != reflect.Pointer {
 		return errNeedPointer
 	}
 	typeStack := make(set.Set[reflect.Type])
@@ -601,7 +601,7 @@ func (c *genericCodec) unmarshal(
 		// Unmarshal each element and append it into the slice.
 		value.Set(reflect.MakeSlice(sliceType, 0, initialSliceLen))
 		zeroValue := reflect.Zero(innerType)
-		for i := 0; i < numElts; i++ {
+		for i := range numElts {
 			value.Set(reflect.Append(value, zeroValue))
 
 			startOffset := p.Offset
@@ -625,7 +625,7 @@ func (c *genericCodec) unmarshal(
 			copy(underlyingSlice, unpackedBytes)
 			return nil
 		}
-		for i := 0; i < numElts; i++ {
+		for i := range numElts {
 			if err := c.unmarshal(p, value.Index(i), typeStack); err != nil {
 				return err
 			}
@@ -669,7 +669,7 @@ func (c *genericCodec) unmarshal(
 			}
 		}
 		return nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Get the type this pointer points to
 		t := value.Type().Elem()
 		// Create a new pointer to a new value of the underlying type
@@ -705,7 +705,7 @@ func (c *genericCodec) unmarshal(
 		// Set [value] to be a new map of the appropriate type.
 		value.Set(reflect.MakeMap(mapType))
 
-		for i := 0; i < numElts; i++ {
+		for i := range numElts {
 			mapKey := reflect.New(mapKeyType).Elem()
 
 			keyStartOffset := p.Offset
